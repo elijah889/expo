@@ -1,5 +1,5 @@
 /*
- * This file is unchanged, except for moving eslint comments
+ * This file is unchanged, except for moving eslint comments and rethrowing rejections during render
  */
 import * as React from 'react';
 
@@ -9,9 +9,13 @@ export function useThenable<T>(create: () => PromiseLike<T>) {
   let initialState: [boolean, T | undefined] = [false, undefined];
 
   // Check if our thenable is synchronous
-  promise.then((result) => {
-    initialState = [true, result];
-  });
+  promise.then(
+    (result) => {
+      initialState = [true, result];
+    },
+    // The effect below rethrows a rejection during render.
+    () => {}
+  );
 
   const [state, setState] = React.useState(initialState);
   const [resolved] = state;
@@ -24,10 +28,17 @@ export function useThenable<T>(create: () => PromiseLike<T>) {
 
       try {
         result = await promise;
-      } finally {
+      } catch (error) {
         if (!cancelled) {
-          setState([true, result]);
+          // Throw during render so the error reaches an error boundary.
+          setState(() => {
+            throw error;
+          });
         }
+        return;
+      }
+      if (!cancelled) {
+        setState([true, result]);
       }
     };
 
